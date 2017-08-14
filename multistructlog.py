@@ -32,7 +32,7 @@ to create_logger:
 
 Each handler depends on a specific renderer (e.g. Logstash needs JSON and
 stdout needs ConsoleRenderer) but a structlog instance can enchain only one
-renderer. For this reason, we apply the renderer at the logging layer, as
+renderer. For this reason, we apply renderers at the logging layer, as
 logging formatters.
 """
 
@@ -71,6 +71,7 @@ class XOSLoggerFactory:
 
     def __call__(self):
         base_logger = logging.getLogger()
+        base_logger.handlers = []
         for h in self.handlers:
             formatter = FormatterFactory(h.__class__.__name__)()
             h.setFormatter(formatter)
@@ -86,14 +87,17 @@ class XOSLoggerFactory:
     - config is the root xos configuration
     - overrides override elements of that config, e.g. level=logging.INFO would cause debug messages to be dropped
     - overrides can contain a 'processors' element, which lets you add processors to structlogs chain 
+    - overrides can also contain force_create = True which returns a previously created logger. Multiple threads 
+      will overwrite the shared logger. 
 
     The use of structlog in Chameleon was used as a reference when writing this code.
 """
 
+CURRENT_LOGGER = None
+CURRENT_LOGGER_PARMS = (None, None)
 
 def create_logger(_config, **overrides):
-    first_entry_elts = ['Starting']
-    first_entry_struct = {}
+    first_entry_elts = []
 
     """Inherit base options from config"""
     try:
@@ -101,6 +105,17 @@ def create_logger(_config, **overrides):
     except AttributeError:
         first_entry_elts.append('Config is empty')
         logging_config = {}
+
+    """Check if a logger with this configuration has already been created, if so, return that logger 
+       instead of creating a new one"""
+    global CURRENT_LOGGER
+    global CURRENT_LOGGER_PARMS
+
+    if CURRENT_LOGGER and CURRENT_LOGGER_PARMS == (logging_config, overrides) and not overrides.get('force_create'):
+        return CURRENT_LOGGER
+    
+    first_entry_elts.append('Starting')
+    first_entry_struct = {}
 
     if overrides:
         first_entry_struct['overrides'] = overrides
@@ -136,4 +151,10 @@ def create_logger(_config, **overrides):
     first_entry = '. '.join(first_entry_elts)
     log.info(first_entry, **first_entry_struct)
 
+    CURRENT_LOGGER = log
+    CURRENT_LOGGER_PARMS = (logging_config, overrides)
     return log
+
+if __name__ == '__main__':
+    l = create_logger({'logging': {'version': 2, 'loggers':{'':{'level': 'INFO'}}}}, level="INFO")
+    l.info("Test OK")

@@ -33,7 +33,7 @@ setup(name='multistructlog',
       ],
       copyright='Open Networking Foundation',
       include_package_data=True,
-      install_requires=['structlog', 'logstash', 'colorama'],
+      install_requires=['structlog', 'python-logstash', 'colorama'],
       keywords=['multistructlog', 'structlog',
                 'multiple backends', 'xos logging']
       )
