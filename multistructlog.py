@@ -43,12 +43,10 @@ import structlog
 import sys
 import copy
 
-
 PROCESSOR_MAP = {
     'StreamHandler': structlog.dev.ConsoleRenderer(),
     'LogstashHandler': structlog.processors.JSONRenderer(),
 }
-
 
 class FormatterFactory:
     def __init__(self, handler_name):
@@ -66,13 +64,9 @@ class FormatterFactory:
 
 
 class XOSLoggerFactory:
-    def __init__(self, handlers):
-        self.handlers = handlers
-
     def __call__(self):
         base_logger = logging.getLogger()
-        base_logger.handlers = []
-        for h in self.handlers:
+        for h in base_logger.handlers:
             formatter = FormatterFactory(h.__class__.__name__)()
             h.setFormatter(formatter)
             base_logger.addHandler(h)
@@ -101,7 +95,7 @@ def create_logger(_config, **overrides):
 
     """Inherit base options from config"""
     try:
-        logging_config = copy.deepcopy(_config.get('logging'))
+        logging_config = copy.deepcopy(_config)
     except AttributeError:
         first_entry_elts.append('Config is empty')
         logging_config = {}
@@ -128,7 +122,6 @@ def create_logger(_config, **overrides):
         logstash.LogstashHandler('localhost', 5617, version=1)
     ]
 
-    handlers = logging_config.get('handlers', default_handlers)
     logging.config.dictConfig(logging_config)
 
     # Processors
@@ -140,7 +133,7 @@ def create_logger(_config, **overrides):
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter
     ])
 
-    factory = XOSLoggerFactory(handlers)
+    factory = XOSLoggerFactory()
 
     structlog.configure(
         processors=processors,
