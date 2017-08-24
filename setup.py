@@ -17,7 +17,7 @@
 from setuptools import setup
 
 setup(name='multistructlog',
-      version='1.0',
+      version='0.9',
       description='structlog with multiple simultaneous logging backends',
       author='Varun Belur, Sapan Bhatia',
       author_email='varun@opennetworking.org,sapan@opennetworking.org',
@@ -26,7 +26,6 @@ setup(name='multistructlog',
       classifiers=[
           'Development Status :: 5 - Production/Stable',
           'Intended Audience :: Developers',
-          'Intended Audience :: Telecommunications Industry'
           'Topic :: System :: Logging',
           'License :: OSI Approved :: Apache Software License',
           'Programming Language :: Python :: 2.7'
