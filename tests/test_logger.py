@@ -40,17 +40,17 @@ class TestMultiStructLog(unittest.TestCase):
                         'handlers': ['default'],
                         'level': 'INFO',
                         'propagate': True
-                }, 
-            }
+                    }, 
+                }
         }
 
-        self.config = {'logging':self.logging_config}
+        self.config = self.logging_config
 
     @mock.patch('multistructlog.logging')
     def test_reload(self, mock_logging):
-        logger = multistructlog.create_logger({'logging':{'version':1, 'foo':'bar'}})
-        logger0 = multistructlog.create_logger({'logging':{'version':1, 'foo':'bar'}})
-        logger2 = multistructlog.create_logger({'logging':{'version':1, 'foo':'notbar'}})
+        logger = multistructlog.create_logger({'version':1, 'foo':'bar'})
+        logger0 = multistructlog.create_logger({'version':1, 'foo':'bar'})
+        logger2 = multistructlog.create_logger({'version':1, 'foo':'notbar'})
         self.assertEqual(logger, logger0)
         self.assertNotEqual(logger,logger2)
 
@@ -59,7 +59,7 @@ class TestMultiStructLog(unittest.TestCase):
     
     @mock.patch('multistructlog.logging')
     def test_level(self, mock_logging):
-        logger = multistructlog.create_logger({'logging':{'version':1, 'foo':'x'}})
+        logger = multistructlog.create_logger({'version':1, 'foo':'x'})
         logger.info('Test 1')
         logger.debug('Test 2')
 
@@ -68,8 +68,7 @@ class TestMultiStructLog(unittest.TestCase):
 
     @mock.patch('multistructlog.logging')
     def test_override_level(self, mock_logging):
-        self.config['logging']['loggers']['']['level'] = 'DEBUG'
-        logger = multistructlog.create_logger(self.config)
+        logger = multistructlog.create_logger(self.config, level='DEBUG')
 
         logger.info('Test 1')
         logger.debug('Test 2')
