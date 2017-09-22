@@ -42,11 +42,13 @@ import logstash
 import structlog
 import sys
 import copy
+import inspect
 
 PROCESSOR_MAP = {
     'StreamHandler': structlog.dev.ConsoleRenderer(),
-    'LogstashHandler': structlog.processors.JSONRenderer(),
+    'LogstashHandler': structlog.processors.JSONRenderer()
 }
+
 
 class FormatterFactory:
     def __init__(self, handler_name):
@@ -80,7 +82,7 @@ class XOSLoggerFactory:
 
 
 """ We expose the Structlog logging interface directly. This should allow callers to
-    bind contexts incrementally and configure and use other features of structlog directly 
+    bind contexts incrementally and configure and use other features of structlog directly
 
     The use of structlog in Chameleon was used for reference when writing this code.
 """
@@ -88,12 +90,14 @@ class XOSLoggerFactory:
 CURRENT_LOGGER = None
 CURRENT_LOGGER_PARMS = None
 
-def create_logger(_config=None, extra_processors=[], force_create=False, level=None):
+
+def create_logger(_config=None, extra_processors=[],
+                  force_create=False, level=None):
     """
     Args:
         _config (dict): 		The standard config for Python's logging module
         extra_processors(dict): 	Custom structlog processors
-        force_create(bool): 		Forces creation of the logger 
+        force_create(bool): 		Forces creation of the logger
         level(logging.loglevel): 	Overrides logging level
 
     Returns:
@@ -109,16 +113,17 @@ def create_logger(_config=None, extra_processors=[], force_create=False, level=N
         first_entry_elts.append('Config is empty')
         logging_config = {'version': 1}
 
-    """Check if a logger with this configuration has already been created, if so, return that logger 
+    """Check if a logger with this configuration has already been created, if so, return that logger
        instead of creating a new one"""
     global CURRENT_LOGGER
     global CURRENT_LOGGER_PARMS
-    if CURRENT_LOGGER and CURRENT_LOGGER_PARMS == (logging_config, extra_processors, level) and not force_create:
+    if CURRENT_LOGGER and CURRENT_LOGGER_PARMS == (
+            logging_config, extra_processors, level) and not force_create:
         return CURRENT_LOGGER
-    
+
     if level:
         try:
-            for k,v in logging_config['loggers'].iteritems():
+            for k, v in logging_config['loggers'].iteritems():
                 v['level'] = level
         except KeyError:
             first_entry_elts.append('Level override failed')
@@ -131,10 +136,16 @@ def create_logger(_config=None, extra_processors=[], force_create=False, level=N
         structlog.processors.format_exc_info,
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter
     ])
-    
+
+    caller = inspect.stack()[1]
+    filename = inspect.getmodule(caller[0]).__name__
+
     default_handlers = [
         logging.StreamHandler(sys.stdout),
-        logstash.LogstashHandler('localhost', 5617, version=1)
+        logging.handlers.RotatingFileHandler(
+            filename=filename,
+            maxBytes=10485760,
+            backupCount=1)
     ]
 
     configured_handlers = logging.getLogger().handlers
@@ -148,12 +159,14 @@ def create_logger(_config=None, extra_processors=[], force_create=False, level=N
 
     log = structlog.get_logger()
     first_entry = '. '.join(first_entry_elts)
-    log.info(first_entry, level_override=level,**logging_config)
+    log.info(first_entry, level_override=level, **logging_config)
 
     CURRENT_LOGGER = log
     CURRENT_LOGGER_PARMS = (logging_config, extra_processors, level)
     return log
 
+
 if __name__ == '__main__':
-    l = create_logger({'version': 2, 'loggers':{'':{'level': 'INFO'}}}, level="INFO")
+    l = create_logger(
+        {'version': 2, 'loggers': {'': {'level': 'INFO'}}}, level="INFO")
     l.info("Test OK")
