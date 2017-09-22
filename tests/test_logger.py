@@ -72,7 +72,6 @@ class TestMultiStructLog(unittest.TestCase):
 
         logger.info('Test 1')
         logger.debug('Test 2')
-        pdb.set_trace()
 
         self.assertEqual(mock_logging.StreamHandler.call_count, 2)
 
