@@ -46,7 +46,8 @@ import inspect
 
 PROCESSOR_MAP = {
     'StreamHandler': structlog.dev.ConsoleRenderer(),
-    'LogstashHandler': structlog.processors.JSONRenderer()
+    'LogstashHandler': structlog.processors.JSONRenderer(),
+    'RotatingFileHandler': structlog.processors.JSONRenderer()
 }
 
 
@@ -70,7 +71,7 @@ class XOSLoggerFactory:
         self.handlers = handlers
 
     def __call__(self):
-        base_logger = logging.getLogger()
+        base_logger = logging.getLogger("multistructlog")
         base_logger.handlers = []
         for h in self.handlers:
             formatter = FormatterFactory(h.__class__.__name__)()
