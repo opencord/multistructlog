@@ -139,7 +139,11 @@ def create_logger(_config=None, extra_processors=[],
     ])
 
     caller = inspect.stack()[1]
-    filename = inspect.getmodule(caller[0]).__name__
+
+    try:
+        filename = inspect.getmodule(caller[0]).__name__
+    except AttributeError:
+        filename = '/tmp/multistructlog'
 
     default_handlers = [
         logging.StreamHandler(sys.stdout),
@@ -149,7 +153,7 @@ def create_logger(_config=None, extra_processors=[],
             backupCount=1)
     ]
 
-    configured_handlers = logging.getLogger().handlers
+    configured_handlers = logging.getLogger('multistructlog').handlers
     handlers = configured_handlers if configured_handlers else default_handlers
     factory = XOSLoggerFactory(handlers)
 
