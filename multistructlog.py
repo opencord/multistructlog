@@ -45,7 +45,7 @@ import copy
 import inspect
 
 PROCESSOR_MAP = {
-    'StreamHandler': structlog.dev.ConsoleRenderer(),
+    'StreamHandler': structlog.dev.ConsoleRenderer(colors=True, force_colors=True),
     'LogstashHandler': structlog.processors.JSONRenderer(),
     'RotatingFileHandler': structlog.processors.JSONRenderer()
 }
