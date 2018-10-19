@@ -1,4 +1,3 @@
-
 # Copyright 2017-present Open Networking Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,53 +12,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import unittest
 import mock
-import pdb
-import os, sys
 import multistructlog
-import logging
+
 
 class MockLogging:
     def debug(self, str):
         return str
 
+
 class TestMultiStructLog(unittest.TestCase):
     def setUp(self):
-        self.logging_config= { 
-                'version': 1,
-                'handlers': { 
-                    'default': {
-                        'class': 'logging.StreamHandler',
-                    },
+        self.logging_config = {
+            'version': 1,
+            'handlers': {
+                'default': {
+                    'class': 'logging.StreamHandler',
                 },
-                
-                'loggers': { 
-                    '': { 
-                        'handlers': ['default'],
-                        'level': 'INFO',
-                        'propagate': True
-                    }, 
-                }
+            },
+
+            'loggers': {
+                '': {
+                    'handlers': ['default'],
+                    'level': 'INFO',
+                    'propagate': True
+                },
+            }
         }
 
         self.config = self.logging_config
 
     @mock.patch('multistructlog.logging')
     def test_reload(self, mock_logging):
-        logger = multistructlog.create_logger({'version':1, 'foo':'bar'})
-        logger0 = multistructlog.create_logger({'version':1, 'foo':'bar'})
-        logger2 = multistructlog.create_logger({'version':1, 'foo':'notbar'})
+        logger = multistructlog.create_logger({'version': 1, 'foo': 'bar'})
+        logger0 = multistructlog.create_logger({'version': 1, 'foo': 'bar'})
+        logger2 = multistructlog.create_logger({'version': 1, 'foo': 'notbar'})
         self.assertEqual(logger, logger0)
-        self.assertNotEqual(logger,logger2)
+        self.assertNotEqual(logger, logger2)
 
-        # "Starting" is only printed once 
+        # "Starting" is only printed once
         self.assertEqual(mock_logging.StreamHandler.call_count, 2)
-    
+
     @mock.patch('multistructlog.logging')
     def test_level(self, mock_logging):
-        logger = multistructlog.create_logger({'version':1, 'foo':'x'})
+        logger = multistructlog.create_logger({'version': 1, 'foo': 'x'})
         logger.info('Test 1')
         logger.debug('Test 2')
 
@@ -74,6 +71,3 @@ class TestMultiStructLog(unittest.TestCase):
         logger.debug('Test 2')
 
         self.assertEqual(mock_logging.StreamHandler.call_count, 2)
-
-if __name__ == '__main__':
-    unittest.main()
