@@ -12,42 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-multistructlog logging module
-
-This module enables structured data to be logged to a single destination, or to
-multiple destinations simulataneously.  The API consists of a single function:
-create_logger, which returns a structlog object. You can invoke it as follows:
-
-    log = logger.create_logger(xos_config, level=logging.INFO)
-    log.info('Entered function', name = '%s' % fn_name)
-
-The default handlers in XOS are the console and Logstash. You can override the
-handlers, structlog's processors, or anything else by adding keyword arguments
-to create_logger:
-
-    log = logger.create_logger(xos_config, level=logging.INFO,
-		 	       handlers=[logging.StreamHandler(sys.stdout),
-					 logstash.LogstashHandler('somehost', 5617, version=1)])
-
-Each handler depends on a specific renderer (e.g. Logstash needs JSON and
-stdout needs ConsoleRenderer) but a structlog instance can enchain only one
-renderer. For this reason, we apply renderers at the logging layer, as
-logging formatters.
-"""
-
-import logging
-import logging.config
-import logstash
-import structlog
-import sys
 import copy
 import inspect
+import logging
+import logging.config
+import structlog
+import sys
+from six import iteritems
 
 PROCESSOR_MAP = {
-    'StreamHandler': structlog.dev.ConsoleRenderer(colors=True, force_colors=True),
-    'LogstashHandler': structlog.processors.JSONRenderer(),
-    'RotatingFileHandler': structlog.processors.JSONRenderer()
+    'StreamHandler': structlog.dev.ConsoleRenderer()
 }
 
 
@@ -66,7 +40,7 @@ class FormatterFactory:
         return formatter
 
 
-class XOSLoggerFactory:
+class LoggerFactory:
     def __init__(self, handlers):
         self.handlers = handlers
 
@@ -82,18 +56,22 @@ class XOSLoggerFactory:
         return self.logger
 
 
-""" We expose the Structlog logging interface directly. This should allow callers to
-    bind contexts incrementally and configure and use other features of structlog directly
+"""
+We expose the Structlog logging interface directly.
 
-    The use of structlog in Chameleon was used for reference when writing this code.
+This should allow callers to bind contexts incrementally and configure and use
+other features of structlog directly.
 """
 
 CURRENT_LOGGER = None
-CURRENT_LOGGER_PARMS = None
+CURRENT_LOGGER_PARAMS = None
 
 
-def create_logger(_config=None, extra_processors=[],
-                  force_create=False, level=None):
+def create_logger(_config=None,
+                  extra_processors=[],
+                  force_create=False,
+                  level=None,
+                  ):
     """
     Args:
         _config (dict): 		The standard config for Python's logging module
@@ -105,40 +83,42 @@ def create_logger(_config=None, extra_processors=[],
         log: structlog logger
     """
 
-    first_entry_elts = ['Starting']
-
     """Inherit base options from config"""
     if _config:
         logging_config = copy.deepcopy(_config)
     else:
-        first_entry_elts.append('Config is empty')
         logging_config = {'version': 1}
 
-    """Check if a logger with this configuration has already been created, if so, return that logger
-       instead of creating a new one"""
+    """
+    Check if a logger with this configuration has already been created, if so,
+    return that logger instead of creating a new one
+    """
+
     global CURRENT_LOGGER
-    global CURRENT_LOGGER_PARMS
-    if CURRENT_LOGGER and CURRENT_LOGGER_PARMS == (
+    global CURRENT_LOGGER_PARAMS
+
+    if CURRENT_LOGGER and CURRENT_LOGGER_PARAMS == (
             logging_config, extra_processors, level) and not force_create:
         return CURRENT_LOGGER
 
     if level:
         try:
-            for k, v in logging_config['loggers'].iteritems():
+            for k, v in iteritems(logging_config['loggers']):
                 v['level'] = level
         except KeyError:
-            first_entry_elts.append('Level override failed')
+            print('multistructlog: Level override failed')
+            sys.exit(1)
 
     logging.config.dictConfig(logging_config)
 
     processors = copy.copy(extra_processors)
+
     processors.extend([
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter
     ])
 
-    
     handlers = logging.getLogger('multistructlog').handlers
 
     if not handlers:
@@ -157,7 +137,7 @@ def create_logger(_config=None, extra_processors=[],
                 backupCount=1)
         ]
 
-    factory = XOSLoggerFactory(handlers)
+    factory = LoggerFactory(handlers)
 
     structlog.configure(
         processors=processors,
@@ -165,15 +145,7 @@ def create_logger(_config=None, extra_processors=[],
     )
 
     log = structlog.get_logger()
-    first_entry = '. '.join(first_entry_elts)
-    log.info(first_entry, level_override=level, **logging_config)
 
     CURRENT_LOGGER = log
-    CURRENT_LOGGER_PARMS = (logging_config, extra_processors, level)
+    CURRENT_LOGGER_PARAMS = (logging_config, extra_processors, level)
     return log
-
-
-if __name__ == '__main__':
-    l = create_logger(
-        {'version': 2, 'loggers': {'': {'level': 'INFO'}}}, level="INFO")
-    l.info("Test OK")
