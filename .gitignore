@@ -1,0 +1,11 @@
+*.pyc
+dist
+.tox
+__pycache__
+*.egg-info
+MANIFEST
+.coverage
+coverage.xml
+nose2-junit.xml
+msl_test_scratch
+
