@@ -12,168 +12,163 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-multistructlog logging module
-
-This module enables structured data to be logged to a single destination, or to
-multiple destinations simulataneously.  The API consists of a single function:
-create_logger, which returns a structlog object. You can invoke it as follows:
-
-    log = logger.create_logger(xos_config, level=logging.INFO)
-    log.info('Entered function', name = '%s' % fn_name)
-
-The default handlers in XOS are the console and Logstash. You can override the
-handlers, structlog's processors, or anything else by adding keyword arguments
-to create_logger:
-
-    log = logger.create_logger(xos_config, level=logging.INFO,
-		 	       handlers=[logging.StreamHandler(sys.stdout),
-					 logstash.LogstashHandler('somehost', 5617, version=1)])
-
-Each handler depends on a specific renderer (e.g. Logstash needs JSON and
-stdout needs ConsoleRenderer) but a structlog instance can enchain only one
-renderer. For this reason, we apply renderers at the logging layer, as
-logging formatters.
-"""
-
+from six import iteritems
+import copy
 import logging
 import logging.config
-import logstash
 import structlog
-import sys
-import copy
-import inspect
 
-PROCESSOR_MAP = {
-    'StreamHandler': structlog.dev.ConsoleRenderer(colors=True, force_colors=True),
-    'LogstashHandler': structlog.processors.JSONRenderer(),
-    'RotatingFileHandler': structlog.processors.JSONRenderer()
-}
+"""
+We expose the Structlog logging interface directly.
 
+This should allow callers to bind contexts incrementally and configure and use
+other features of structlog directly.
 
-class FormatterFactory:
-    def __init__(self, handler_name):
-        self.handler_name = handler_name
+To create a logging_config dictionary see these docs:
 
-    def __call__(self):
-        try:
-            processor = PROCESSOR_MAP[self.handler_name]
-        except KeyError:
-            processor = structlog.processors.KeyValueRenderer()
+ https://docs.python.org/2.7/library/logging.config.html#logging.config.dictConfig
+ http://www.structlog.org/en/stable/standard-library.html#rendering-using-structlog-based-formatters-within-logging
 
-        formatter = structlog.stdlib.ProcessorFormatter(processor)
+When setting log level, the higher of logging_config['logger'][*]['level'] and
+logging_config['handler'][*]['level'] is used.
 
-        return formatter
+If the handler's level is set to "DEBUG" but the handler's is set to "ERROR",
+the handler will only log "ERROR" level messages.
 
+List of logging levels:
+ https://docs.python.org/2.7/library/logging.html#logging-levels
 
-class XOSLoggerFactory:
-    def __init__(self, handlers):
-        self.handlers = handlers
-
-    def __call__(self):
-        base_logger = logging.getLogger("multistructlog")
-        base_logger.handlers = []
-        for h in self.handlers:
-            formatter = FormatterFactory(h.__class__.__name__)()
-            h.setFormatter(formatter)
-            base_logger.addHandler(h)
-
-        self.logger = base_logger
-        return self.logger
-
-
-""" We expose the Structlog logging interface directly. This should allow callers to
-    bind contexts incrementally and configure and use other features of structlog directly
-
-    The use of structlog in Chameleon was used for reference when writing this code.
 """
 
+# Add a TRACE log level to both structlog and normal python logger
+
+# new level is 5, per these locations:
+# https://github.com/python/cpython/blob/2.7/Lib/logging/__init__.py#L132
+# https://github.com/hynek/structlog/blob/18.2.0/src/structlog/stdlib.py#L296
+structlog.stdlib.TRACE = TRACE_LOGLVL = 5
+structlog.stdlib._NAME_TO_LEVEL['trace'] = TRACE_LOGLVL
+logging.addLevelName(TRACE_LOGLVL, "TRACE")
+
+
+# Create structlog TRACE level and add to BoundLogger object
+#  https://github.com/hynek/structlog/blob/18.2.0/src/structlog/stdlib.py#L59
+def trace_structlog(self, event=None, *args, **kw):
+    ''' enable TRACE for structlog '''
+    return self._proxy_to_logger("trace", event, *args, **kw)
+
+
+structlog.stdlib.BoundLogger.trace = trace_structlog
+
+
+# create standard logger TRACE level and add to Logger object
+#  https://github.com/python/cpython/blob/2.7/Lib/logging/__init__.py#L1152
+def trace_loglevel(self, message, *args, **kws):
+    ''' enable TRACE for standard logger'''
+    if self.isEnabledFor(TRACE_LOGLVL):
+        self._log(TRACE_LOGLVL, message, args, **kws)
+
+
+logging.Logger.trace = trace_loglevel
+
+# used to return same logger on multiple calls without reconfiguring it
+# may be somewhat redundant with "cache_logger_on_first_use" in structlog
 CURRENT_LOGGER = None
-CURRENT_LOGGER_PARMS = None
+CURRENT_LOGGER_PARAMS = None
 
 
-def create_logger(_config=None, extra_processors=[],
-                  force_create=False, level=None):
+def create_logger(logging_config=None, level=None):
     """
     Args:
-        _config (dict): 		The standard config for Python's logging module
-        extra_processors(dict): 	Custom structlog processors
-        force_create(bool): 		Forces creation of the logger
-        level(logging.loglevel): 	Overrides logging level
+        logging_config (dict):    Input to logging.config.dictConfig
+        level(logging.loglevel):  Overrides logging level for all loggers
 
     Returns:
         log: structlog logger
     """
 
-    first_entry_elts = ['Starting']
-
-    """Inherit base options from config"""
-    if _config:
-        logging_config = copy.deepcopy(_config)
-    else:
-        first_entry_elts.append('Config is empty')
-        logging_config = {'version': 1}
-
-    """Check if a logger with this configuration has already been created, if so, return that logger
-       instead of creating a new one"""
     global CURRENT_LOGGER
-    global CURRENT_LOGGER_PARMS
-    if CURRENT_LOGGER and CURRENT_LOGGER_PARMS == (
-            logging_config, extra_processors, level) and not force_create:
+    global CURRENT_LOGGER_PARAMS
+
+    if CURRENT_LOGGER and CURRENT_LOGGER_PARAMS == (logging_config, level):
         return CURRENT_LOGGER
 
-    if level:
-        try:
-            for k, v in logging_config['loggers'].iteritems():
-                v['level'] = level
-        except KeyError:
-            first_entry_elts.append('Level override failed')
+    # store unmodified config, which is changed later
+    CURRENT_LOGGER_PARAMS = (copy.deepcopy(logging_config), level)
 
+    # set bare minimum config if not set
+    if not logging_config:
+        logging_config = {'version': 1}
+
+    # check if formatters exists in logging_config, set defaults if not set
+    if "formatters" not in logging_config:
+
+        logging_config['formatters'] = {
+            'json': {
+                '()': structlog.stdlib.ProcessorFormatter,
+                "processor": structlog.processors.JSONRenderer(),
+            },
+            'structured-color': {
+                '()': structlog.stdlib.ProcessorFormatter,
+                'processor': structlog.dev.ConsoleRenderer(colors=True),
+            },
+            'structured': {
+                '()': structlog.stdlib.ProcessorFormatter,
+                'processor': structlog.dev.ConsoleRenderer(colors=False),
+            },
+        }
+
+    # set a default colored output to console handler if none are set
+    if "handlers" not in logging_config:
+
+        logging_config['handlers'] = {
+            'default': {
+                'class': 'logging.StreamHandler',
+                'level': 'DEBUG',
+            },
+        }
+
+    # if a formatter isn't set in a handler, use structured formatter
+    for k, v in iteritems(logging_config['handlers']):
+        if 'formatter' not in v:
+            v['formatter'] = 'structured'
+
+    # add loggers if they don't exist or default '' logger is missing
+    if "loggers" not in logging_config or '' not in logging_config['loggers']:
+
+        # By default, include all handlers in default '' logger
+        handler_l = logging_config['handlers'].keys()
+
+        logging_config['loggers'] = {
+            '': {
+                'handlers': handler_l,
+                'level': 'NOTSET',  # don't filter on level in logger
+                'propagate': True
+            },
+        }
+
+    # If level is set, override log level of base loggers
+    if level:
+        for k, v in iteritems(logging_config['loggers']):
+            v['level'] = level
+
+    # configure standard logger
     logging.config.dictConfig(logging_config)
 
-    processors = copy.copy(extra_processors)
-    processors.extend([
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.stdlib.ProcessorFormatter.wrap_for_formatter
-    ])
-
-    
-    handlers = logging.getLogger('multistructlog').handlers
-
-    if not handlers:
-        caller = inspect.stack()[1]
-
-        try:
-            filename = inspect.getmodule(caller[0]).__name__
-        except AttributeError:
-            filename = '/tmp/multistructlog'
-
-        handlers = [
-            logging.StreamHandler(sys.stdout),
-            logging.handlers.RotatingFileHandler(
-                filename=filename,
-                maxBytes=10485760,
-                backupCount=1)
-        ]
-
-    factory = XOSLoggerFactory(handlers)
-
+    # configure structlog
     structlog.configure(
-        processors=processors,
-        logger_factory=factory,
+        processors=[
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
     )
 
     log = structlog.get_logger()
-    first_entry = '. '.join(first_entry_elts)
-    log.info(first_entry, level_override=level, **logging_config)
 
     CURRENT_LOGGER = log
-    CURRENT_LOGGER_PARMS = (logging_config, extra_processors, level)
+
     return log
-
-
-if __name__ == '__main__':
-    l = create_logger(
-        {'version': 2, 'loggers': {'': {'level': 'INFO'}}}, level="INFO")
-    l.info("Test OK")
