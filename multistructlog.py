@@ -109,7 +109,8 @@ def create_logger(logging_config=None, level=None):
             },
             'structured-color': {
                 '()': structlog.stdlib.ProcessorFormatter,
-                'processor': structlog.dev.ConsoleRenderer(colors=True),
+                'processor': structlog.dev.ConsoleRenderer(colors=True,
+                                                           force_colors=True),
             },
             'structured': {
                 '()': structlog.stdlib.ProcessorFormatter,
