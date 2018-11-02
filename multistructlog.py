@@ -17,6 +17,7 @@ import copy
 import logging
 import logging.config
 import structlog
+import traceback
 
 """
 We expose the Structlog logging interface directly.
@@ -85,19 +86,27 @@ def create_logger(logging_config=None, level=None):
     Returns:
         log: structlog logger
     """
+    # DEBUGGING ONLY!  Print the config and
+    print("called multistructlog.create_logger!")
+    print("multistructlog config: %s" % logging_config)
+    traceback.print_stack()
 
     global CURRENT_LOGGER
     global CURRENT_LOGGER_PARAMS
 
+    # if config provided, copy to prevent changes to dict from being pushed
+    # back to caller, otherwise use default config
+    if logging_config:
+        logging_config = copy.deepcopy(logging_config)
+    else:
+        logging_config = {'version': 1, "disable_existing_loggers": False}
+
     if CURRENT_LOGGER and CURRENT_LOGGER_PARAMS == (logging_config, level):
+        print "identical parameters to create_logger, returning CURRENT_LOGGER"
         return CURRENT_LOGGER
 
     # store unmodified config, which is changed later
     CURRENT_LOGGER_PARAMS = (copy.deepcopy(logging_config), level)
-
-    # set bare minimum config if not set
-    if not logging_config:
-        logging_config = {'version': 1}
 
     # check if formatters exists in logging_config, set defaults if not set
     if "formatters" not in logging_config:
@@ -109,7 +118,8 @@ def create_logger(logging_config=None, level=None):
             },
             'structured-color': {
                 '()': structlog.stdlib.ProcessorFormatter,
-                'processor': structlog.dev.ConsoleRenderer(colors=True),
+                'processor': structlog.dev.ConsoleRenderer(colors=True,
+                                                           force_colors=True),
             },
             'structured': {
                 '()': structlog.stdlib.ProcessorFormatter,
@@ -157,8 +167,12 @@ def create_logger(logging_config=None, level=None):
     # configure structlog
     structlog.configure(
         processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
+            structlog.processors.TimeStamper(fmt="iso"),
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         context_class=dict,
