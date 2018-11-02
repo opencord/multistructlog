@@ -115,19 +115,28 @@ class TestMultiStructLog(unittest.TestCase):
 
         # check contents of file1
         with open(f1) as f1fh:
-            f1_desired = '''should be in both files        extra={'number': 42}
-'''
-            self.assertEqual(f1fh.read(), f1_desired)
+
+            # regex at start should roughly match ISO8601 datetime
+            f1_desired = r"[\dTZ\-\.\:]+ \[warning  \] should be in both files        extra={'number': 42}"
+            self.assertRegexpMatches(f1fh.read(), f1_desired)
 
         # check contents of file2
         f2_read = []
         f2_desired = [
-            {"event": "should be in both files", "extra": {"number": 42}},
-            {"event": "should only be in file2"},
+            {"event": "should be in both files", "extra": {"number": 42},
+             "level": "warning", "timestamp": "removed"},
+            {"event": "should only be in file2",
+             "level": "info", "timestamp": "removed"},
         ]
 
         with open(f2) as f2fh:
             for line in f2fh:
-                f2_read.append(json.loads(line))
+                jl = json.loads(line)
+
+                # assert there is a timestamp, and remove it as it changes
+                self.assertTrue(True if "timestamp" in jl else False)
+                jl['timestamp'] = "removed"
+
+                f2_read.append(jl)
 
         self.assertEqual(f2_read, f2_desired)
