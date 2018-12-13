@@ -89,6 +89,10 @@ def create_logger(logging_config=None, level=None):
     global CURRENT_LOGGER
     global CURRENT_LOGGER_PARAMS
 
+    # Prevent changes from being pushed back to caller
+    if logging_config:
+        logging_config = copy.deepcopy(logging_config)
+    
     if CURRENT_LOGGER and CURRENT_LOGGER_PARAMS == (logging_config, level):
         return CURRENT_LOGGER
 
